@@ -12,6 +12,7 @@ from functools import wraps
 from flask import render_template, redirect, url_for, flash, request, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
+from flask_login import login_user, logout_user, current_user, login_required
 
 from app import app, db
 from models import User, UserSession, VPNClient
@@ -32,27 +33,12 @@ def generate_token():
 # Admin required decorator
 def admin_required(f):
     @wraps(f)
+    @login_required
     def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            flash('Please log in to access this page.', 'warning')
-            return redirect(url_for('login'))
-        
-        # Check if user is admin
-        user = User.query.get(session['user_id'])
-        if not user or not user.is_admin:
+        if not current_user.is_admin:
             flash('Admin privileges required to access this page.', 'danger')
             return redirect(url_for('dashboard'))
             
-        return f(*args, **kwargs)
-    return decorated_function
-
-# Login required decorator
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user_id' not in session:
-            flash('Please log in to access this page.', 'warning')
-            return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -60,13 +46,16 @@ def login_required(f):
 @app.route('/')
 def index():
     """Main landing page"""
-    if 'user_id' in session:
+    if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """User login route"""
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+        
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
@@ -81,9 +70,6 @@ def login():
         
         if user and user.check_password(password):
             # User authentication successful
-            session['user_id'] = user.id
-            session['username'] = user.username
-            session['is_admin'] = user.is_admin
             
             # Update last login time
             user.last_login = datetime.utcnow()
@@ -105,7 +91,15 @@ def login():
                 db.session.commit()
                 session['token'] = token
                 
+                # Log in user with Flask-Login
+                login_user(user, remember=remember)
+                
                 flash(f'Welcome back, {user.username}!', 'success')
+                
+                # Redirect to the next page if specified, otherwise dashboard
+                next_page = request.args.get('next')
+                if next_page and next_page.startswith('/'):
+                    return redirect(next_page)
                 return redirect(url_for('dashboard'))
                 
             except SQLAlchemyError as e:
@@ -120,7 +114,7 @@ def login():
 @app.route('/logout')
 def logout():
     """User logout route"""
-    if 'token' in session:
+    if current_user.is_authenticated and 'token' in session:
         # Invalidate the session token
         user_session = UserSession.query.filter_by(token=session['token']).first()
         if user_session:
@@ -132,6 +126,10 @@ def logout():
     
     # Clear the session
     session.clear()
+    
+    # Log out user with Flask-Login
+    logout_user()
+    
     flash('You have been logged out', 'info')
     return redirect(url_for('login'))
 
@@ -191,14 +189,6 @@ def register():
 @login_required
 def dashboard():
     """Main dashboard page"""
-    # Get the current user
-    user = User.query.get(session['user_id'])
-    
-    if not user:
-        session.clear()
-        flash('User not found', 'danger')
-        return redirect(url_for('login'))
-    
     # Get server status and statistics
     # For now, we'll use a placeholder, but this would be replaced
     # with actual calls to the VPN server's status API
@@ -251,7 +241,7 @@ def dashboard():
     
     return render_template(
         'dashboard.html',
-        user=user,
+        user=current_user,
         server_status=server_status,
         config=config
     )
@@ -340,20 +330,15 @@ def api_user_management(user_id):
 @login_required
 def api_profile():
     """API endpoint for user profile management"""
-    user = User.query.get(session['user_id'])
-    
-    if not user:
-        return jsonify({'error': 'User not found'}), 404
-    
     # Get profile
     if request.method == 'GET':
         return jsonify({
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'is_admin': user.is_admin,
-            'created_at': user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else None,
-            'last_login': user.last_login.strftime('%Y-%m-%d %H:%M:%S') if user.last_login else None
+            'id': current_user.id,
+            'username': current_user.username,
+            'email': current_user.email,
+            'is_admin': current_user.is_admin,
+            'created_at': current_user.created_at.strftime('%Y-%m-%d %H:%M:%S') if current_user.created_at else None,
+            'last_login': current_user.last_login.strftime('%Y-%m-%d %H:%M:%S') if current_user.last_login else None
         })
     
     # Update profile
@@ -364,15 +349,15 @@ def api_profile():
         if 'email' in data:
             # Check if email is already in use
             existing_user = User.query.filter_by(email=data['email']).first()
-            if existing_user and existing_user.id != user.id:
+            if existing_user and existing_user.id != current_user.id:
                 return jsonify({'error': 'Email already in use'}), 400
-            user.email = data['email']
+            current_user.email = data['email']
         
         # Update password
         if 'password' in data and 'current_password' in data:
-            if not user.check_password(data['current_password']):
+            if not current_user.check_password(data['current_password']):
                 return jsonify({'error': 'Current password is incorrect'}), 401
-            user.set_password(data['password'])
+            current_user.set_password(data['password'])
         
         try:
             db.session.commit()

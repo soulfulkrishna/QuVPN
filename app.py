@@ -7,6 +7,7 @@ import logging
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase
+from flask_login import LoginManager
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -19,6 +20,10 @@ class Base(DeclarativeBase):
 # Initialize database
 db = SQLAlchemy(model_class=Base)
 
+# Initialize login manager
+login_manager = LoginManager()
+login_manager.login_view = 'login'
+
 # Create the Flask application with the correct template and static folders
 app = Flask(__name__, 
            static_folder='server/web/static',
@@ -26,14 +31,23 @@ app = Flask(__name__,
 
 # Configure the application
 app.secret_key = os.environ.get("SESSION_SECRET", os.urandom(24).hex())
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL", "sqlite:///vpn.db")
+
+# Use PostgreSQL database
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 300,
     "pool_pre_ping": True,
 }
 
-# Initialize the app with the extension
+# Initialize the app with extensions
 db.init_app(app)
+login_manager.init_app(app)
+
+# User loader function for Flask-Login
+@login_manager.user_loader
+def load_user(user_id):
+    from models import User
+    return User.query.get(int(user_id))
 
 # Import routes after app initialization to avoid circular imports
 from routes import *
