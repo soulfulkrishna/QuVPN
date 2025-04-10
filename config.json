@@ -1,0 +1,60 @@
+{
+  "version": "1.0.0",
+  "client": {
+    "server_address": "127.0.0.1",
+    "server_port": 8000,
+    "protocol": "tcp",
+    "autostart": false,
+    "reconnect_attempts": 3,
+    "reconnect_delay": 5,
+    "log_level": "INFO",
+    "log_file": "vpn_client.log",
+    "log_traffic": false,
+    "tun_name": "vpn0",
+    "connect_timeout": 10.0,
+    "ui": {
+      "theme": "dark",
+      "show_notifications": true,
+      "minimize_to_tray": true
+    }
+  },
+  "server": {
+    "bind_address": "0.0.0.0",
+    "bind_port": 8000,
+    "protocol": "tcp",
+    "max_clients": 10,
+    "log_level": "INFO",
+    "log_file": "vpn_server.log",
+    "log_traffic": false,
+    "user_db_path": "users.db",
+    "tun_name": "vpn0",
+    "allow_registration": true,
+    "certificate": {
+      "cert_file": "certs/cert.pem",
+      "key_file": "certs/key.pem",
+      "generate_if_missing": true
+    }
+  },
+  "networking": {
+    "mtu": 1400,
+    "buffer_size": 2048,
+    "dns_servers": ["8.8.8.8", "8.8.4.4"],
+    "subnet": "10.0.0.0/24",
+    "keepalive_interval": 30,
+    "reconnect_timeout": 60
+  },
+  "security": {
+    "cipher": "AES-256-GCM",
+    "use_kyber": true,
+    "use_dilithium": true,
+    "packet_signing": true,
+    "forward_secrecy": true,
+    "connection_timeout": 300
+  },
+  "web": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "log_level": "INFO",
+    "log_file": "vpn_web.log"
+  }
+}
