@@ -11,10 +11,13 @@ import time
 import logging
 import threading
 import queue
+import json
 from typing import Dict, Tuple, List, Optional, Union, Any
 
 from common.crypto.kyber import Kyber
 from common.crypto.aes import AESCipher
+from common.crypto.otp import OTPCipher
+from common.crypto.rng import RNG, RNGSource
 from common.networking.packet import IPPacket, PacketFragmenter
 
 
@@ -47,13 +50,14 @@ class TunnelEndpoint:
     Base class for both client and server tunnel endpoints
     """
     def __init__(self, mode: int = TunnelConfig.MODE_TCP,
-                log_traffic: bool = False):
+                log_traffic: bool = False, use_otp: bool = True):
         """
         Initialize the tunnel endpoint
         
         Args:
             mode: TunnelConfig.MODE_TCP or TunnelConfig.MODE_UDP
             log_traffic: Whether to log traffic details
+            use_otp: Whether to enable OTP encryption on top of AES
         """
         self.mode = mode
         self.log_traffic = log_traffic
@@ -65,6 +69,8 @@ class TunnelEndpoint:
         # Encryption
         self.session_key = None
         self.kyber_keys = None
+        self.use_otp = use_otp
+        self.otp_keys = {}
         
         # Packet processing
         self.fragmenter = PacketFragmenter()
@@ -73,6 +79,9 @@ class TunnelEndpoint:
         
         # Setup logging
         self.logger = logging.getLogger("tunnel")
+        
+        if self.use_otp:
+            self.logger.info("OTP encryption enabled for additional security")
     
     def _create_socket(self) -> socket.socket:
         """Create appropriate socket based on mode"""
@@ -404,15 +413,16 @@ class TunnelClient(TunnelEndpoint):
     Client-side implementation of the tunnel
     """
     def __init__(self, mode: int = TunnelConfig.MODE_TCP,
-                log_traffic: bool = False):
+                log_traffic: bool = False, use_otp: bool = True):
         """
         Initialize the tunnel client
         
         Args:
             mode: TunnelConfig.MODE_TCP or TunnelConfig.MODE_UDP
             log_traffic: Whether to log traffic details
+            use_otp: Whether to enable OTP encryption on top of AES
         """
-        super().__init__(mode, log_traffic)
+        super().__init__(mode, log_traffic, use_otp)
         self.tun_interface = None
         
         # Threads
@@ -684,20 +694,22 @@ class TunnelServer(TunnelEndpoint):
     Server-side implementation of the tunnel
     """
     def __init__(self, mode: int = TunnelConfig.MODE_TCP,
-                log_traffic: bool = False):
+                log_traffic: bool = False, use_otp: bool = True):
         """
         Initialize the tunnel server
         
         Args:
             mode: TunnelConfig.MODE_TCP or TunnelConfig.MODE_UDP
             log_traffic: Whether to log traffic details
+            use_otp: Whether to enable OTP encryption on top of AES
         """
-        super().__init__(mode, log_traffic)
+        super().__init__(mode, log_traffic, use_otp)
         
         self.server_socket = None
         self.clients = {}  # client_address -> client_connection
         self.client_buffers = {}  # client_address -> buffer
         self.client_keys = {}  # client_address -> session_key
+        self.client_otp_keys = {}  # client_address -> otp key info
         
         # Threads
         self.accept_thread = None
