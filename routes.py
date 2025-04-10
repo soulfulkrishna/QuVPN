@@ -19,6 +19,11 @@ from models import User, UserSession, VPNClient
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# Add current year to all templates via context processor
+@app.context_processor
+def inject_current_year():
+    return dict(current_year=datetime.now().year)
+
 # Helper function to generate tokens
 def generate_token():
     """Generate a secure random token for session management"""

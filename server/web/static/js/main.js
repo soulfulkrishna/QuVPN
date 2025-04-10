@@ -2,13 +2,8 @@
  * Main JavaScript file for Post-Quantum VPN Web Interface
  */
 
-// Check if jQuery is loaded
-if (typeof jQuery === 'undefined') {
-    console.error('jQuery is required but not loaded!');
-}
-
-// Document ready function
-$(document).ready(function() {
+// Document ready function using vanilla JS with jQuery fallback
+document.addEventListener('DOMContentLoaded', function() {
     console.log('Post-Quantum VPN Web Interface initialized');
     
     // Initialize Bootstrap tooltips
@@ -23,14 +18,17 @@ $(document).ready(function() {
         return new bootstrap.Popover(popoverTriggerEl);
     });
     
-    // Handle form validation
-    handleFormValidation();
-    
-    // Setup time-ago elements
-    updateTimeAgoElements();
-    
-    // Setup user modal events
-    setupUserModal();
+    // Initialize jQuery-dependent features if jQuery is available
+    if (typeof jQuery !== 'undefined') {
+        // Handle form validation
+        handleFormValidation();
+        
+        // Setup time-ago elements
+        updateTimeAgoElements();
+        
+        // Setup user modal events
+        setupUserModal();
+    }
 });
 
 /**
