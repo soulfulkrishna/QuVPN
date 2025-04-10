@@ -173,7 +173,7 @@ class TunnelEndpoint:
     
     def _encrypt_data(self, data: bytes) -> bytes:
         """
-        Encrypt data for transmission
+        Encrypt data for transmission using OTP+AES
         
         Args:
             data: Raw data to encrypt
@@ -183,12 +183,32 @@ class TunnelEndpoint:
         """
         if not self.session_key:
             raise ValueError("No session key established")
-            
-        return AESCipher.encrypt_packet(data, self.session_key)
+        
+        try:
+            # First apply one-time pad if enabled
+            if self.use_otp:
+                # Use OTP for highest security
+                encrypted_data, metadata = OTPCipher.encrypt(data)
+                
+                # Store the OTP metadata with the packet
+                # Format: [OTP_FLAG (1)] [META_LEN (2)] [METADATA (JSON)] [ENCRYPTED_DATA]
+                meta_json = json.dumps(metadata).encode('utf-8')
+                meta_len = len(meta_json).to_bytes(2, byteorder='big')
+                packet = b'\x01' + meta_len + meta_json + encrypted_data
+                
+                self.logger.debug(f"OTP encryption applied, packet size: {len(packet)} bytes")
+                return packet
+            else:
+                # Use only AES if OTP not enabled
+                return AESCipher.encrypt_packet(data, self.session_key)
+        except Exception as e:
+            self.logger.error(f"Encryption error: {e}")
+            # Fall back to AES-only if OTP fails
+            return AESCipher.encrypt_packet(data, self.session_key)
     
     def _decrypt_data(self, data: bytes) -> bytes:
         """
-        Decrypt received data
+        Decrypt received data using OTP+AES
         
         Args:
             data: Encrypted data
@@ -198,8 +218,29 @@ class TunnelEndpoint:
         """
         if not self.session_key:
             raise ValueError("No session key established")
-            
-        return AESCipher.decrypt_packet(data, self.session_key)
+        
+        try:
+            # Check if this is an OTP-encrypted packet (first byte is 0x01)
+            if self.use_otp and data and data[0] == 0x01:
+                # Extract metadata
+                meta_len = int.from_bytes(data[1:3], byteorder='big')
+                meta_json = data[3:3+meta_len]
+                encrypted_data = data[3+meta_len:]
+                
+                # Parse metadata
+                metadata = json.loads(meta_json.decode('utf-8'))
+                
+                # Decrypt with OTP
+                self.logger.debug(f"Decrypting with OTP, metadata: {metadata}")
+                decrypted = OTPCipher.decrypt(encrypted_data, metadata)
+                return decrypted
+            else:
+                # Standard AES decryption
+                return AESCipher.decrypt_packet(data, self.session_key)
+        except Exception as e:
+            self.logger.error(f"Decryption error: {e}")
+            # Try standard AES decryption as fallback
+            return AESCipher.decrypt_packet(data, self.session_key)
     
     def send_packet(self, packet: Union[bytes, IPPacket], 
                    command: int = TunnelConfig.CMD_DATA) -> bool:
@@ -400,6 +441,14 @@ class TunnelEndpoint:
             finally:
                 self.connected = False
                 self.session_key = None
+                
+                # Clean up OTP keys if enabled
+                if self.use_otp:
+                    # Delete all OTP keys used in this session
+                    for key_info in OTPCipher.list_keys():
+                        OTPCipher.delete_key(key_info["key_id"])
+                    self.logger.info("OTP keys cleaned up")
+                
                 self.logger.info("Tunnel disconnected")
     
     def cleanup(self) -> None:
@@ -876,8 +925,24 @@ class TunnelServer(TunnelEndpoint):
                 session_key = self.client_keys.get(client_addr)
                 if session_key:
                     try:
-                        payload = AESCipher.decrypt_packet(payload, session_key)
-                        self._process_client_data(client_addr, payload)
+                        # Check if this is an OTP-encrypted packet (first byte is 0x01)
+                        if self.use_otp and payload and payload[0] == 0x01:
+                            # Extract metadata
+                            meta_len = int.from_bytes(payload[1:3], byteorder='big')
+                            meta_json = payload[3:3+meta_len]
+                            encrypted_data = payload[3+meta_len:]
+                            
+                            # Parse metadata
+                            metadata = json.loads(meta_json.decode('utf-8'))
+                            
+                            # Decrypt with OTP
+                            self.logger.debug(f"Decrypting client packet with OTP, metadata: {metadata}")
+                            decrypted = OTPCipher.decrypt(encrypted_data, metadata)
+                            self._process_client_data(client_addr, decrypted)
+                        else:
+                            # Standard AES decryption
+                            payload = AESCipher.decrypt_packet(payload, session_key)
+                            self._process_client_data(client_addr, payload)
                     except Exception as e:
                         self.logger.error(f"Failed to decrypt packet from {client_addr}: {e}")
                 else:
@@ -1042,7 +1107,20 @@ class TunnelServer(TunnelEndpoint):
         # Encrypt if it's a data packet and we have a session key
         if command == TunnelConfig.CMD_DATA and client_addr in self.client_keys:
             try:
-                data = AESCipher.encrypt_packet(data, self.client_keys[client_addr])
+                if self.use_otp:
+                    # Use OTP for highest security
+                    encrypted_data, metadata = OTPCipher.encrypt(data)
+                    
+                    # Store the OTP metadata with the packet
+                    # Format: [OTP_FLAG (1)] [META_LEN (2)] [METADATA (JSON)] [ENCRYPTED_DATA]
+                    meta_json = json.dumps(metadata).encode('utf-8')
+                    meta_len = len(meta_json).to_bytes(2, byteorder='big')
+                    data = b'\x01' + meta_len + meta_json + encrypted_data
+                    
+                    self.logger.debug(f"OTP encryption applied for client {client_addr}, packet size: {len(data)} bytes")
+                else:
+                    # Use only AES if OTP not enabled
+                    data = AESCipher.encrypt_packet(data, self.client_keys[client_addr])
             except Exception as e:
                 self.logger.error(f"Failed to encrypt packet to {client_addr}: {e}")
                 return False
@@ -1154,6 +1232,13 @@ class TunnelServer(TunnelEndpoint):
         # Close all client connections
         for client_addr in list(self.clients.keys()):
             self._remove_client(client_addr)
+        
+        # Clean up OTP keys
+        if self.use_otp:
+            # Clean up any lingering OTP keys
+            for key_info in OTPCipher.list_keys():
+                OTPCipher.delete_key(key_info["key_id"])
+            self.logger.info("OTP keys cleaned up")
             
         # Close server socket
         if self.server_socket:
@@ -1171,8 +1256,8 @@ if __name__ == "__main__":
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
     
-    # Example server
-    server = TunnelServer(mode=TunnelConfig.MODE_TCP, log_traffic=True)
+    # Example server with OTP encryption enabled (default)
+    server = TunnelServer(mode=TunnelConfig.MODE_TCP, log_traffic=True, use_otp=True)
     server.start(('0.0.0.0', 8080))
     
     try:
