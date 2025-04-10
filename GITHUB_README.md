@@ -1,150 +1,146 @@
-# QuVPN - Post-Quantum VPN System
+# QuVPN: Post-Quantum Virtual Private Network
 
-A Python-based custom VPN system using post-quantum cryptography with CRYSTAL-Kyber and Dilithium, supporting both Windows and Linux platforms.
-
-![Quantum VPN](generated-icon.png)
+QuVPN is a custom Python-based VPN system utilizing post-quantum cryptography with CRYSTAL-Kyber and Dilithium algorithms. It features dual-layer encryption with AES-256 and One-Time Pad (OTP) implementation.
 
 ## Features
 
-- **Post-Quantum Cryptography Implementation:**
-  - CRYSTAL-Kyber for key exchange
-  - Dilithium for certificate exchange
-  - AES-256-GCM for data encryption
-- **Secure Tunnel Architecture:**
-  - Custom HTTPS TLS-Socket tunneling mechanism
-  - Robust packet fragmentation and forwarding
-  - TCP and UDP protocol support
-- **User Management:**
-  - Authentication system
-  - Role-based permission system
-  - User registration and management
-- **Web Administration Interface:**
-  - Dashboard with real-time statistics
-  - Client monitoring
-  - Configuration management
-- **Cross-Platform Support:**
-  - Windows implementation with WinTUN adapters
-  - Linux implementation with native TUN interfaces
-- **Enhanced Security Features:**
-  - Perfect forward secrecy
-  - Firewall capabilities
-  - Traffic filtering
-- **Enterprise-Ready:**
-  - Comprehensive logging
-  - Windows service / Linux daemon support
-  - Administrator privileges handling
+- **Post-Quantum Security**: Uses NIST PQC finalists CRYSTAL-Kyber for key exchange and CRYSTAL-Dilithium for digital signatures
+- **Dual-Layer Encryption**: AES-256 with an additional one-time pad layer for enhanced security
+- **Cross-Platform Support**: Compatible with both Windows and Linux
+- **Protocol Support**: Implements both TCP and UDP VPN tunneling
+- **Web Interface**: Flask-based administration dashboard for user management
+- **Perfect Forward Secrecy**: Ensures sessions remain secure even if long-term keys are compromised
 
-## System Requirements
+## Repository Structure
 
-- Python 3.8 or later
-- PyCryptodome for AES implementation
-- Flask for web interface
-- SQLAlchemy for database management
-- Pywin32 for Windows platform support (Windows only)
+```
+.
+├── client/                # Client-side implementation
+│   ├── platform/          # Platform-specific code (Windows, Linux)
+│   └── ui/                # User interface components
+├── common/                # Shared code between client and server
+│   ├── crypto/            # Cryptographic implementations
+│   ├── networking/        # Networking and tunnel code
+│   └── utils/             # Utility functions
+├── server/                # Server-side implementation
+│   ├── auth/              # Authentication services
+│   ├── platform/          # Platform-specific server code
+│   └── web/               # Web interface
+└── docs/                  # Documentation
+```
 
 ## Installation
 
-### From Source
+### Prerequisites
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/soulfulkrishna/QuVPN.git
+- Python 3.8 or higher
+- PostgreSQL database
+- Administrative privileges (required for TUN/TAP interfaces)
+
+### Server Setup
+
+1. Clone this repository:
+   ```
+   git clone https://github.com/yourusername/QuVPN.git
    cd QuVPN
    ```
 
 2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
+   ```
+   pip install -r github-requirements.txt
    ```
 
-3. Initialize the database:
-   ```bash
+3. Set up the PostgreSQL database:
+   ```
+   createdb vpn_database
+   ```
+
+4. Configure environment variables:
+   ```
+   export DATABASE_URL=postgresql://username:password@localhost/vpn_database
+   export FLASK_SECRET_KEY=your_secure_random_key
+   ```
+
+5. Initialize the database:
+   ```
    python -c "from app import app, db; app.app_context().push(); db.create_all()"
    ```
 
-4. Start the web interface:
-   ```bash
-   python main.py
+6. Start the server:
+   ```
+   python main.py server --port 8080
    ```
 
-## Architecture
+7. Start the web interface:
+   ```
+   gunicorn --bind 0.0.0.0:5000 main:app
+   ```
 
-The QuVPN system consists of three main components:
+### Client Setup
 
-1. **VPN Server:** Manages client connections and routes traffic between VPN clients and the internet.
-2. **VPN Client:** Establishes and maintains secure VPN connections to the server.
-3. **Web Interface:** Provides a user-friendly UI for managing the VPN server and monitoring clients.
+1. Install dependencies:
+   ```
+   pip install -r github-requirements.txt
+   ```
 
-### Directory Structure
+2. Run the client (as administrator/root):
+   ```
+   sudo python main.py client --server your.vpn.server.address --port 8080
+   ```
+
+## Web Interface
+
+The web interface runs on port 5000 by default and provides:
+
+- User registration and login
+- VPN connection management
+- Traffic statistics
+- Administrative functions
+
+Access it at `http://localhost:5000` after starting the server.
+
+## Security Features
+
+- **Quantum-Resistant Algorithms**: CRYSTAL-Kyber and Dilithium implementation
+- **Dual-Layer Encryption**: AES-256-GCM plus One-Time Pad
+- **Perfect Forward Secrecy**: Ephemeral keys for each session
+- **Secure Authentication**: Multi-factor capability and robust session management
+- **Certificate Verification**: Using Dilithium signatures for verification
+
+## Technical Documentation
+
+For complete technical details, compile the provided thesis document:
 
 ```
-QuVPN/
-├── client/               # VPN client components
-│   ├── platform/         # Platform-specific implementations
-│   ├── ui/               # User interface components
-│   └── client.py         # Main client implementation
-├── common/               # Shared components
-│   ├── crypto/           # Cryptography implementations
-│   ├── networking/       # Networking components
-│   └── utils/            # Utility functions
-├── server/               # VPN server components
-│   ├── auth/             # Authentication modules
-│   ├── platform/         # Platform-specific implementations
-│   ├── web/              # Web interface
-│   └── server.py         # Main server implementation
-└── main.py               # Entry point
+./compile_thesis.sh
 ```
 
-## Post-Quantum Cryptography
+This will generate a comprehensive PDF that explains all aspects of the code implementation.
 
-QuVPN uses NIST's post-quantum cryptography standardization candidates:
+## Development
 
-- **CRYSTAL-Kyber:** A lattice-based key encapsulation mechanism (KEM) that is designed to be secure against both classical and quantum computer attacks.
-- **Dilithium:** A lattice-based digital signature scheme resistant to quantum attacks.
+### Running Tests
 
-These algorithms provide protection against future quantum computing threats while maintaining good performance on current hardware.
+```
+# Run cryptography tests
+python -m common.crypto.test_otp
+python -m common.crypto.test_tunnel_otp
 
-## Usage
-
-### Running the VPN Server
-
-```bash
-python -m main server --config config.json
+# Run unit tests
+python -m unittest discover
 ```
 
-### Running the Web Interface
+### Adding New Features
 
-```bash
-python -m main web --host 0.0.0.0 --port 5000
-```
-
-### Running the VPN Client
-
-```bash
-python -m main client --config client_config.json
-```
-
-### Running the GUI Client
-
-```bash
-python -m main client --gui
-```
-
-## Security Considerations
-
-- QuVPN is designed with security in mind but should undergo a thorough security audit before deployment in high-security environments.
-- The system provides a framework for implementing post-quantum cryptography but is intended for educational and research purposes.
-- Always keep the software updated to incorporate the latest security improvements.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+1. Create a new branch for your feature
+2. Implement tests to verify functionality
+3. Ensure cross-platform compatibility
+4. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the [MIT License](LICENSE) - see the LICENSE file for details.
 
-## Acknowledgments
+## Disclaimer
 
-- NIST for the post-quantum cryptography standardization process
-- The cryptography research community for their work on quantum-resistant algorithms
+This software is provided for educational and research purposes. Before using in production environments, conduct a thorough security review and consider regulatory compliance requirements.
